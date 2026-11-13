@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Control de Facturas - Sinergia & Danna</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Firebase SDKs -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+        import { getFirestore, collection, addDoc, getDocs, doc, deleteDoc, onSnapshot, query, orderBy } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyAhBpH1PGcwHuP3kxMyoX0PxRyBWoS4YlI",
+            authDomain: "sistema-gestion-sinergia.firebaseapp.com",
+            projectId: "sistema-gestion-sinergia",
+            storageBucket: "sistema-gestion-sinergia.firebasestorage.app",
+            messagingSenderId: "281894880678",
+            appId: "1:281894880678:web:735fc3960316c4f912bb67"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+
+        window.db = db;
+        window.collection = collection;
+        window.addDoc = addDoc;
+        window.getDocs = getDocs;
+        window.doc = doc;
+        window.deleteDoc = deleteDoc;
+        window.onSnapshot = onSnapshot;
+        window.query = query;
+        window.orderBy = orderBy;
+        window.auth = auth;
+        window.signInWithEmailAndPassword = signInWithEmailAndPassword;
+        window.signOut = signOut;
+
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                document.getElementById('login-screen').classList.add('hidden');
+                document.getElementById('app-screen').classList.remove('hidden');
+                document.getElementById('user-email-display').innerText = user.email;
+                cargarFacturasEnTiempoReal();
+            } else {
+                document.getElementById('login-screen').classList.remove('hidden');
+                document.getElementById('app-screen').classList.add('hidden');
+            }
+        });
+    </script>
+</head>
+<body class="bg-slate-100 font-sans">
+
+    <!-- PANTALLA DE LOGIN -->
+    <div id="login-screen" class="flex items-center justify-center h-screen bg-slate-900">
+        <div class="bg-white p-8 rounded-xl shadow-2xl w-96">
+            <h2 class="text-2xl font-bold text-center text-slate-800 mb-6">SINERGIA & DANNA</h2>
+            <form onsubmit="handleLogin(event)" class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-slate-700">Correo Electrónico</label>
+                    <input type="email" id="login-email" required class="w-full mt-1 p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-slate-700">Contraseña</label>
+                    <input type="password" id="login-password" required class="w-full mt-1 p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
+                </div>
+                <button type="submit" class="w-full bg-blue-600 text-white py-2 rounded-lg font-semibold hover:bg-blue-700 transition">Ingresar al Sistema</button>
+                <p id="login-error" class="text-red-500 text-sm text-center mt-2"></p>
+            </form>
+        </div>
+    </div>
+
+    <!-- PANTALLA PRINCIPAL -->
+    <div id="app-screen" class="hidden min-h-screen flex flex-col">
+        <header class="bg-slate-900 text-white px-6 py-4 flex justify-between items-center shadow-md">
+            <div class="flex items-center space-x-4">
+                <h1 class="text-xl font-bold tracking-wider">📋 CONTROL DE FACTURAS - SINERGIA & DANNA</h1>
+                <span class="text-xs bg-emerald-600 px-2 py-1 rounded">Sincronizado en Vivo</span>
+            </div>
+            <div class="flex items-center space-x-4">
+                <span id="user-email-display" class="text-sm text-slate-300"></span>
+                <button onclick="handleLogout()" class="bg-red-600 px-3 py-1.5 rounded text-sm hover:bg-red-700 transition">Cerrar Sesión</button>
+            </div>
+        </header>
+
+        <nav class="bg-white border-b px-6 flex space-x-6 shadow-sm">
+            <button onclick="cambiarTab('registro')" id="btn-registro" class="py-3 border-b-2 border-blue-600 font-semibold text-blue-600 focus:outline-none">📝 Registrar Factura</button>
+            <button onclick="cambiarTab('resumen')" id="btn-resumen" class="py-3 border-b-2 border-transparent text-slate-600 hover:text-blue-600 focus:outline-none">📊 Resumen por Trabajador</button>
+        </nav>
+
+        <main class="flex-1 p-6 max-w-7xl mx-auto w-full">
+
+            <!-- SECCIÓN REGISTRO -->
+            <section id="tab-registro" class="space-y-6">
+                <div class="bg-white p-6 rounded-xl shadow-sm border">
+                    <h2 class="text-lg font-bold text-slate-800 mb-4">Nuevo Registro de Factura</h2>
+                    
+                    <form onsubmit="guardarFactura(event)" class="space-y-4">
+                        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-600 mb-1">N° de Factura</label>
+                                <input type="text" id="reg-num" placeholder="Ej. 426" required class="w-full p-2 border rounded">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-600 mb-1">Sucursal (Dónde se hizo)</label>
+                                <select id="reg-local" class="w-full p-2 border rounded bg-white font-semibold">
+                                    <option value="SINERGIA">SINERGIA</option>
+                                    <option value="DANNA">DANNA</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-600 mb-1">Trabajador (Quién la hizo)</label>
+                                <input type="text" id="reg-trabajador" placeholder="Nombre del trabajador" required class="w-full p-2 border rounded">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-600 mb-1">Estado</label>
+                                <select id="reg-estado" class="w-full p-2 border rounded font-semibold">
+                                    <option value="Correcta">Correcta</option>
+                                    <option value="Errada">Errada / Anulada</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1">Detalle / Observación</label>
+                            <input type="text" id="reg-detalle" placeholder="Observaciones adicionales (opcional)" class="w-full p-2 border rounded">
+                        </div>
+
+                        <button type="submit" class="w-full bg-emerald-600 text-white py-2.5 rounded font-semibold hover:bg-emerald-700 transition">Guardar Registro</button>
+                    </form>
+                </div>
+
+                <div class="bg-white p-6 rounded-xl shadow-sm border">
+                    <h2 class="text-lg font-bold text-slate-800 mb-4">Historial de Facturas Registradas</h2>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left border-collapse">
+                            <thead>
+                                <tr class="bg-slate-100 text-slate-700 text-sm">
+                                    <th class="p-3 border">N° Factura</th>
+                                    <th class="p-3 border">Sucursal</th>
+                                    <th class="p-3 border">Trabajador</th>
+                                    <th class="p-3 border">Estado</th>
+                                    <th class="p-3 border">Fecha y Hora</th>
+                                    <th class="p-3 border">Observación</th>
+                                    <th class="p-3 border">Acción</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tabla-facturas" class="text-slate-600 text-sm"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- SECCIÓN RESUMEN -->
+            <section id="tab-resumen" class="hidden space-y-6">
+                <div class="bg-white p-6 rounded-xl shadow-sm border">
+                    <h2 class="text-lg font-bold text-slate-800 mb-2">Rendimiento y Conteo por Trabajador</h2>
+                    <p class="text-sm text-slate-500 mb-4">Total de facturas emitidas, cuántas están correctas y cuántas están erradas por cada colaborador.</p>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left border-collapse">
+                            <thead>
+                                <tr class="bg-slate-100 text-slate-700 text-sm">
+                                    <th class="p-3 border">Trabajador</th>
+                                    <th class="p-3 border text-center">Total Facturas</th>
+                                    <th class="p-3 border text-center text-emerald-600">Correctas (Bien)</th>
+                                    <th class="p-3 border text-center text-red-600">Erradas (Mal)</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tabla-reporte-trabajadores" class="text-slate-600 text-sm"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+        </main>
+    </div>
+
+    <script>
+        async function handleLogin(e) {
+            e.preventDefault();
+            const email = document.getElementById('login-email').value;
+            const pass = document.getElementById('login-password').value;
+            try {
+                await window.signInWithEmailAndPassword(window.auth, email, pass);
+            } catch (error) {
+                document.getElementById('login-error').innerText = "Error: Credenciales incorrectas.";
+            }
+        }
+
+        async function handleLogout() {
+            await window.signOut(window.auth);
+        }
+
+        function cambiarTab(tab) {
+            ['registro', 'resumen'].forEach(t => {
+                document.getElementById(`tab-${t}`).classList.add('hidden');
+                document.getElementById(`btn-${t}`).className = "py-3 border-b-2 border-transparent text-slate-600 focus:outline-none";
+            });
+            document.getElementById(`tab-${tab}`).classList.remove('hidden');
+            document.getElementById(`btn-${tab}`).className = "py-3 border-b-2 border-blue-600 font-semibold text-blue-600 focus:outline-none";
+        }
+
+        function cargarFacturasEnTiempoReal() {
+            const qFacturas = window.query(window.collection(window.db, "control_facturas"), window.orderBy("fecha", "desc"));
+            window.onSnapshot(qFacturas, (snapshot) => {
+                const tbodyFac = document.getElementById('tabla-facturas');
+                const tbodyReporte = document.getElementById('tabla-reporte-trabajadores');
+                
+                tbodyFac.innerHTML = '';
+                let statsTrabajadores = {};
+
+                snapshot.forEach((docSnap) => {
+                    const fac = { id: docSnap.id, ...docSnap.data() };
+                    const fechaFmt = new Date(fac.fecha).toLocaleString();
+                    const estadoBadge = fac.estado === 'Correcta' 
+                        ? '<span class="bg-emerald-100 text-emerald-800 px-2 py-1 rounded text-xs font-bold">Correcta</span>' 
+                        : '<span class="bg-red-100 text-red-800 px-2 py-1 rounded text-xs font-bold">Errada</span>';
+
+                    // Tabla de registros
+                    tbodyFac.innerHTML += `
+                        <tr class="border-b hover:bg-slate-50">
+                            <td class="p-3 font-mono font-bold">${fac.numero}</td>
+                            <td class="p-3 font-semibold text-blue-600">${fac.local}</td>
+                            <td class="p-3">${fac.trabajador}</td>
+                            <td class="p-3">${estadoBadge}</td>
+                            <td class="p-3 text-xs">${fechaFmt}</td>
+                            <td class="p-3 text-xs">${fac.detalle || '-'}</td>
+                            <td class="p-3"><button onclick="eliminarRegistro('${fac.id}')" class="text-red-500 hover:underline text-xs">Eliminar</button></td>
+                        </tr>
+                    `;
+
+                    // Estadísticas por trabajador
+                    const trab = fac.trabajador.trim().toUpperCase();
+                    if (!statsTrabajadores[trab]) {
+                        statsTrabajadores[trab] = { total: 0, correctas: 0, erradas: 0 };
+                    }
+                    statsTrabajadores[trab].total++;
+                    if (fac.estado === 'Correcta') {
+                        statsTrabajadores[trab].correctas++;
+                    } else {
+                        statsTrabajadores[trab].erradas++;
+                    }
+                });
+
+                // Renderizar resumen de trabajadores
+                tbodyReporte.innerHTML = '';
+                for (let trab in statsTrabajadores) {
+                    const st = statsTrabajadores[trab];
+                    tbodyReporte.innerHTML += `
+                        <tr class="border-b hover:bg-slate-50 font-medium">
+                            <td class="p-3">${trab}</td>
+                            <td class="p-3 text-center">${st.total}</td>
+                            <td class="p-3 text-center text-emerald-600 font-bold">${st.correctas}</td>
+                            <td class="p-3 text-center text-red-600 font-bold">${st.erradas}</td>
+                        </tr>
+                    `;
+                }
+                if (Object.keys(statsTrabajadores).length === 0) {
+                    tbodyReporte.innerHTML = `<tr><td colspan="4" class="p-4 text-center text-slate-400">No hay registros aún.</td></tr>`;
+                }
+            });
+        }
+
+        async function guardarFactura(e) {
+            e.preventDefault();
+            const numero = document.getElementById('reg-num').value.trim();
+            const local = document.getElementById('reg-local').value;
+            const trabajador = document.getElementById('reg-trabajador').value.trim();
+            const estado = document.getElementById('reg-estado').value;
+            const detalle = document.getElementById('reg-detalle').value.trim();
+
+            await window.addDoc(window.collection(window.db, "control_facturas"), {
+                numero, local, trabajador, estado, detalle, fecha: Date.now()
+            });
+
+            e.target.reset();
+            document.getElementById('reg-num').focus();
+        }
+
+        async function eliminarRegistro(id) {
+            if(confirm("¿Seguro que deseas eliminar este registro?")) {
+                await window.deleteDoc(window.doc(window.db, "control_facturas", id));
+            }
+        }
+    </script>
+</body>
+</html>
